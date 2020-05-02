@@ -155,6 +155,7 @@ pub enum Status {
 
 
 pub struct State {
+    pub color: String,
     pub board: Board,
     pub turn: String,
     pub history: Vec<Board>,
@@ -162,8 +163,9 @@ pub struct State {
 }
 
 impl State {
-    pub fn init() -> State {
+    pub fn init(color: String) -> State {
         State {
+            color,
             board: Board::init(),
             turn: WHITE.to_string(),
             history: vec![],

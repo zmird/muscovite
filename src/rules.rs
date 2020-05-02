@@ -1,7 +1,9 @@
-use crate::game::{Board, Move, Position, Status};
+use crate::game::{Move, Position, Status, State};
 use crate::constants::*;
 
-pub fn legal_moves(board: &Board, color: &String) -> Vec<Move> {
+pub fn legal_moves(state: &State) -> Vec<Move> {
+    let board = &state.board;
+    let color = &state.color;
     let mut moves: Vec<Move> =  vec![];
     let mut cells: Vec<Position> = vec![];
 
@@ -108,7 +110,11 @@ pub fn legal_moves(board: &Board, color: &String) -> Vec<Move> {
     return moves
 }
 
-pub fn game_status(board: &Board, history: &Vec<Board>, color: &String) -> Status {
+pub fn game_status(state: &State) -> Status {
+    let board = &state.board;
+    let history= &state.history;
+    let color = &state.color;
+
     let king_cell: Option<Position> = board.king_cell();
 
     // King not present on board
@@ -129,16 +135,28 @@ pub fn game_status(board: &Board, history: &Vec<Board>, color: &String) -> Statu
 
     // Check if king is captured
     if history.len() > 3 {
-        let current_king_cell: Position = king_cell.unwrap();
-        let previous_king_cell: Position = history.split_at(history.len()-3).1.first().unwrap().king_cell().unwrap();
-        if current_king_cell == previous_king_cell {
-            let k : Position = current_king_cell;
-            let king_type: u32 = board.cell_type(k);
+        // Current king position
+        let ck: Position = king_cell.unwrap();
+        // Previous king position
+        let pk: Position = history.split_at(history.len()-3).1.first().unwrap().king_cell().unwrap();
+        // Check if king is in throne or regular cell
+        let king_type: u32 = board.cell_type(ck);
 
-            let up_cell = Position { x: k.x, y: k.y + 1 };
-            let down_cell = Position { x: k.x, y: k.y - 1 };
-            let right_cell = Position { x: k.x + 1, y: k.y };
-            let left_cell = Position { x: k.x - 1, y: k.y };
+        let up_cell = Position { x: ck.x, y: ck.y + 1 };
+        let down_cell = Position { x: ck.x, y: ck.y - 1 };
+        let right_cell = Position { x: ck.x + 1, y: ck.y };
+        let left_cell = Position { x: ck.x - 1, y: ck.y };
+
+        let previous_up_cell = Position { x: pk.x, y: pk.y + 1 };
+        let previous_down_cell = Position { x: pk.x, y: pk.y - 1 };
+        let previous_right_cell = Position { x: pk.x + 1, y: pk.y };
+        let previous_left_cell = Position { x: pk.x - 1, y: pk.y };
+
+        // King is in same position and at least one cell around changed
+        if ck == pk && !(up_cell != previous_up_cell ||
+           down_cell != previous_down_cell ||
+           right_cell != previous_right_cell ||
+           left_cell != previous_left_cell) {
 
             let up_content: u32 = board.cell_content(up_cell);
             let down_content: u32 = board.cell_content(down_cell);
@@ -179,8 +197,8 @@ pub fn game_status(board: &Board, history: &Vec<Board>, color: &String) -> Statu
 
             // King regular capture on 2 sides with king not adjacent to throne
             if (up_type != T && down_type != T && right_type != T && left_type != T) &&
-               ((up_content == B || up_type == C) && (down_content == B || down_type == C)) ||
-               ((right_content == B || right_type == C) && (left_content == B || left_type == C)) {
+               (((up_content == B || up_type == C) && (down_content == B || down_type == C)) ||
+               ((right_content == B || right_type == C) && (left_content == B || left_type == C))) {
                 println!("King regular capture on 2 sides");
                 if color == WHITE {
                     return Status::LOSS;
@@ -194,7 +212,7 @@ pub fn game_status(board: &Board, history: &Vec<Board>, color: &String) -> Statu
 
     // TODO optimize
     // No moves possible
-    if legal_moves(board, color).len() == 0 {
+    if legal_moves(state).len() == 0 {
         return Status::LOSS;
     }
 

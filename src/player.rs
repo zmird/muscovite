@@ -7,7 +7,6 @@ use crate::serialization::*;
 use std::io::Error;
 
  pub struct Player {
-     color: String,
      connection: ServerConnection,
      state: State
  }
@@ -17,16 +16,15 @@ use std::io::Error;
          let mut connection = ServerConnection::connect(&address, port)?;
          connection.write_string(&name);
          Ok(Player {
-             color,
              connection,
-             state: State::init()
+             state: State::init(color)
          })
      }
 
      fn make_move(&mut self) {
-         let m: Move = random(&self.state.board, &self.color);
+         let m: Move = random(&self.state);
          println!("Chosen move: {}", m);
-         self.connection.write_string(&serialize_move(&m, &self.color));
+         self.connection.write_string(&serialize_move(&m, &self.state.color));
      }
 
      fn receive_game_state(&mut self)  {
@@ -34,7 +32,7 @@ use std::io::Error;
          self.state.board = deserialize_board(&res);
          self.state.turn = deserialize_turn(&res);
          self.state.history.push(self.state.board);
-         self.state.status = game_status(&self.state.board, &self.state.history, &self.color);
+         self.state.status = game_status(&self.state);
      }
 
 
@@ -44,7 +42,7 @@ use std::io::Error;
          println!("{}", self.state.board);
 
          loop {
-             if self.state.turn == self.color {
+             if self.state.turn == self.state.color {
                  println!("\n=== My turn ===");
                  self.make_move();
              } else {
