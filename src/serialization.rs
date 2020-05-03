@@ -20,24 +20,6 @@ pub fn serialize_move(m: &Move, color: &str) -> String {
     serde_json::to_string(&sm).unwrap()
 }
 
-// pub fn deserialize_move(s: String) -> Move {
-//     let sm: ServerMove = serde_json::from_str(&s).unwrap();
-//     let from_column: u32 = BOARD_COLUMNS.iter().position(|&c| c == sm.from.chars().nth(0).unwrap()).unwrap() as u32;
-//     let from_row: u32 = sm.from.chars().nth(1).unwrap().to_digit(10).unwrap();
-//     let to_column: u32 = BOARD_COLUMNS.iter().position(|&c| c == sm.to.chars().nth(0).unwrap()).unwrap() as u32;
-//     let to_row: u32 = sm.to.chars().nth(1).unwrap().to_digit(10).unwrap();
-//     Move {
-//         from: Position {
-//             x: from_column,
-//             y: from_row
-//         },
-//         to: Position {
-//             x: to_column,
-//             y: to_row
-//         }
-//     }
-// }
-
 pub fn deserialize_board(input: &String) -> Board {
     let wrapper: Value = serde_json::from_str(&input).unwrap();
     let data: &Map<String, Value> = wrapper.as_object().unwrap();
