@@ -52,6 +52,15 @@ impl Board {
        }
     }
 
+    pub fn apply_move(&mut self, m: &Move) {
+        let cell_content: u32 = self.cell_content(m.from);
+        self.board[m.to.y as usize][m.to.x as usize] = cell_content;
+        let checkers_captured = captures(&self, m);
+        for checker in checkers_captured {
+            self.board[checker.y as usize][checker.x as usize] = E;
+        }
+    }
+
     pub fn cell_type(&self, p: Position) -> u32 {
         BOARD[p.y as usize][p.x as usize]
     }
@@ -69,6 +78,33 @@ impl Board {
             return Some(BLACK.to_string());
         }
         None
+    }
+
+    pub fn king_cell(&self) -> Option<Position> {
+        self.filter_cells(K).first().copied()
+    }
+
+    pub fn surrounding_cells(&self, p: Position) -> [Option<Position>; 4] {
+        // Up Down Right Left
+        let mut s: [Option<Position>; 4] = [None, None, None, None];
+
+        // Up
+        if p.y > 0 {
+            s[0] = Some(Position { x: p.x, y: p.y-1 });
+        }
+        // Down
+        if p.y < 8 {
+            s[1] = Some(Position { x: p.x, y: p.y+1 });
+        }
+        // Right
+        if p.x < 8 {
+            s[2] = Some(Position { x: p.x+1, y: p.y });
+        }
+        // Left
+        if p.x > 0 {
+            s[3] = Some(Position { x: p.x-1, y: p.y });
+        }
+        return s;
     }
 
     pub fn is_empty(&self, p: Position) -> bool {
@@ -101,18 +137,6 @@ impl Board {
         self.filter_cells(B)
     }
 
-    pub fn king_cell(&self) -> Option<Position> {
-        self.filter_cells(K).first().copied()
-    }
-
-    pub fn apply_move(&mut self, m: &Move) {
-        let cell_content: u32 = self.cell_content(m.from);
-        self.board[m.to.y as usize][m.to.x as usize] = cell_content;
-        let checkers_captured = captures(&self, m);
-        for checker in checkers_captured {
-            self.board[checker.y as usize][checker.x as usize] = E;
-        }
-    }
 }
 
 impl PartialEq for Board {
@@ -153,14 +177,13 @@ impl fmt::Display for Board {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Status {
     WIN,
     LOSS,
     DRAW,
     ONGOING
 }
-
 
 #[derive(Clone)]
 pub struct State {
