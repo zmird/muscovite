@@ -2,7 +2,7 @@
 use crate::network::ServerConnection;
 use crate::game::{State, Status, Move};
 use crate::rules::game_status;
-use crate::search::random;
+use crate::search::alpha_beta_search;
 use crate::serialization::*;
 use std::io::Error;
 
@@ -22,7 +22,7 @@ use std::io::Error;
      }
 
      fn make_move(&mut self) {
-         let m: Move = random(&self.state);
+         let m: Move = alpha_beta_search(&self.state, 1).unwrap();
          println!("Chosen move: {}", m);
          self.connection.write_string(&serialize_move(&m, &self.state.color));
      }
@@ -46,7 +46,7 @@ use std::io::Error;
                  println!("\n=== My turn ===");
                  self.make_move();
              } else {
-                 println!("\n=== Enemy turn ===");
+                 println!("\n=== Enemy turn ===\n");
              }
              self.receive_game_state();
              println!("{}", self.state.board);
