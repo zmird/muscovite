@@ -1,4 +1,5 @@
 use crate::constants::*;
+use crate::rules::captures;
 use std::fmt;
 use std::cmp::Eq;
 
@@ -59,11 +60,22 @@ impl Board {
         self.board[p.y as usize][p.x as usize]
     }
 
+    pub fn cell_color(&self, p: Position) -> Option<String> {
+        let content: u32 = self.cell_content(p);
+        if content == W || content == K {
+            return Some(WHITE.to_string());
+        }
+        else if content == B {
+            return Some(BLACK.to_string());
+        }
+        None
+    }
+
     pub fn is_empty(&self, p: Position) -> bool {
         self.cell_content(p) == E
     }
 
-    fn filter_cells(&self, cell_type: u32) -> Vec<Position> {
+    pub fn filter_cells(&self, cell_type: u32) -> Vec<Position> {
         let mut cells: Vec<Position> = vec![];
         for (y, row) in self.board.iter().enumerate() {
             // println!("{:?}", row);
@@ -81,10 +93,6 @@ impl Board {
         cells
     }
 
-    // pub fn empty_cells(&self) -> Vec<Position> {
-    //     self.filter_cells(E)
-    // }
-
     pub fn white_cells(&self) -> Vec<Position> {
         self.filter_cells(W)
     }
@@ -97,15 +105,14 @@ impl Board {
         self.filter_cells(K).first().copied()
     }
 
-    // pub fn move_white(&mut self, start: [usize; 2], end: [usize; 2]) {
-    //     self.board[start[0]][start[1]] = E;
-    //     self.board[end[0]][end[1]] = W;
-    // }
-
-    // pub fn move_black(&mut self, start: [usize; 2], end: [usize; 2]) {
-    //     self.board[start[0]][start[1]] = E;
-    //     self.board[end[0]][end[1]] = B;
-    // }
+    pub fn apply_move(&mut self, m: &Move) {
+        let cell_content: u32 = self.cell_content(m.from);
+        self.board[m.to.y as usize][m.to.x as usize] = cell_content;
+        let checkers_captured = captures(&self, m);
+        for checker in checkers_captured {
+            self.board[checker.y as usize][checker.x as usize] = E;
+        }
+    }
 }
 
 impl PartialEq for Board {
@@ -146,6 +153,7 @@ impl fmt::Display for Board {
     }
 }
 
+#[derive(Clone)]
 pub enum Status {
     WIN,
     LOSS,
@@ -154,6 +162,7 @@ pub enum Status {
 }
 
 
+#[derive(Clone)]
 pub struct State {
     pub color: String,
     pub board: Board,

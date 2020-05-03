@@ -1,9 +1,15 @@
 use crate::game::{Move, State};
-use crate::rules::legal_moves;
+use crate::rules::{legal_moves, legal_move};
 use rand::Rng;
 
 fn actions(state: &State) -> Vec<Move> {
     legal_moves(state)
+}
+
+fn result(state: &State, m: &Move) -> State {
+    let mut new_state: State = state.clone();
+    new_state.board.apply_move(m);
+    new_state
 }
 
 pub fn random(state: &State) -> Move {
@@ -13,8 +19,6 @@ pub fn random(state: &State) -> Move {
     actions.get(i).cloned().unwrap()
 }
 
-// fn result() {}
-//
 // fn terminal_state() {}
 //
 // fn utility() {}
