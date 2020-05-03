@@ -7,7 +7,7 @@ fn is_legal_target_cell(state: &State, cell: Position) -> bool {
     state.board.is_empty(cell) && (cell_type == R || cell_type == F)
 }
 
-// Returns a cell closer by one
+// Returns a cell closer by one to destination
 fn get_one_cell_closer(from: Position, to: Position) -> Option<Position> {
     if from.x == to.x && from.y < from.y {
         return Some(Position { x: from.x, y: from.y+1 });
@@ -24,6 +24,19 @@ fn get_one_cell_closer(from: Position, to: Position) -> Option<Position> {
     return None;
 }
 
+// Return true if there are obstacles
+pub fn obstacles(state: &State, m: &Move) -> bool {
+    let mut p: Position = m.to;
+    while (m.from.x == m.to.x && p.y != m.to.y) ||
+        (m.from.y == m.to.y && p.x != m.to.x) {
+        p = get_one_cell_closer(m.from, p).unwrap();
+        if !is_legal_target_cell(state, p) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Check if is a legal move
 pub fn legal_move(state: &State, m: &Move) -> bool {
     if m.from == m.to {
@@ -31,14 +44,8 @@ pub fn legal_move(state: &State, m: &Move) -> bool {
     }
 
     // Check obstacles
-    let mut p: Position = m.to;
-    while (m.from.x == m.to.x && p.y != m.to.y) ||
-        (m.from.y == m.to.y && p.x != m.to.x) {
-        p = get_one_cell_closer(m.from, p).unwrap();
-        if !is_legal_target_cell(state, p) {
-            return false;
-        }
-
+    if obstacles(state, &m) {
+        return false;
     }
 
     if is_legal_target_cell(state, m.to) {
@@ -144,9 +151,12 @@ pub fn captures(board: &Board, m: &Move) -> Vec<Position> {
 
     // Checks that two given cell content are opposite color. es W -> B
     let same_color = |a: Position, b: Position| -> bool {
-        let ca = board.cell_color(a).unwrap();
-        let cb = board.cell_color(b).unwrap();
-        if ca == cb {
+        let ca = board.cell_color(a);
+        let cb = board.cell_color(b);
+        if ca.is_none() || cb.is_none() {
+            return false;
+        }
+        else if ca.unwrap() == cb.unwrap() {
             return true;
         }
         return false;
@@ -165,108 +175,113 @@ pub fn captures(board: &Board, m: &Move) -> Vec<Position> {
     };
 
     // Surrounding cells
-    let up_cell = Position { x: moved_checker.x, y: moved_checker.y-1 };
-    let down_cell = Position { x: moved_checker.x, y: moved_checker.y+1 };
-    let right_cell = Position { x: moved_checker.x+1, y: moved_checker.y };
-    let left_cell = Position { x: moved_checker.x-1, y: moved_checker.y };
+    let surrounding_cells: [Option<Position>; 4] = board.surrounding_cells(moved_checker);
+
+    let surrounded = |cell: Position| {
+        let surrounding_cells: [Option<Position>; 4] = board.surrounding_cells(cell);
+        if surrounding_cells.iter().any(|o| o.is_none()) {
+            return false;
+        }
+        if surrounding_cells.iter().all(|p| is_barrier(p.unwrap()) ||
+            board.cell_content(p.unwrap()) == B) {
+            return true;
+        }
+        return false;
+    };
 
     // Capture up
-    if same_color(moved_checker, up_cell) {
-        let up_up_cell = Position { x: up_cell.x, y: up_cell.y-1 };
-        let left_up_cell = Position { x: up_cell.x+1, y: up_cell.y };
-        let right_up_cell = Position { x: up_cell.x-1, y: up_cell.y };
+    if surrounding_cells[0].is_some() {
+        let up_cell = surrounding_cells[0].unwrap();
+        if same_color(moved_checker, up_cell) && up_cell.y > 0 {
+            let up_up_cell = Position { x: up_cell.x, y: up_cell.y-1 };
 
-        // King capture
-        if is_king(up_cell) {
-            // Four side capture
-            if (!same_color(up_up_cell, up_cell) || is_barrier(up_up_cell)) &&
-               (!same_color(right_up_cell, up_cell) || is_barrier(right_up_cell)) &&
-               (!same_color(left_up_cell, up_cell) || is_barrier(left_up_cell)) {
+            // King capture
+            if is_king(up_cell) {
+                // Four side capture
+                if surrounded(up_cell) {
+                    captured_checkers.push(up_cell);
+                }
+                // Two side capture
+                else if same_color(up_up_cell, up_cell) || board.cell_type(up_up_cell) == C {
+                    captured_checkers.push(up_cell);
+                }
+            }
+            // Regular checker capture
+            else if same_color(up_up_cell, moved_checker) || is_barrier(up_up_cell) {
                 captured_checkers.push(up_cell);
             }
-            // Two side capture
-            else if same_color(up_up_cell, up_cell) || board.cell_type(up_up_cell) == C {
-                captured_checkers.push(up_cell);
-            }
-        }
-        // Regular checker capture
-        else if same_color(up_up_cell, moved_checker) || is_barrier(up_up_cell) {
-            captured_checkers.push(up_cell);
         }
     }
 
     // Capture down
-    if same_color(moved_checker, down_cell) {
-        let down_down_cell = Position { x: down_cell.x, y: down_cell.y+1 };
-        let left_down_cell = Position { x: down_cell.x+1, y: down_cell.y };
-        let right_down_cell = Position { x: down_cell.x-1, y: down_cell.y };
+    if surrounding_cells[1].is_some() {
+        let down_cell = surrounding_cells[1].unwrap();
+        if same_color(moved_checker, down_cell) && down_cell.y < 8 {
+            let down_down_cell = Position { x: down_cell.x, y: down_cell.y+1 };
 
-        // King capture
-        if is_king(down_cell) {
-            // Four side capture
-            if (!same_color(down_down_cell, down_cell) || is_barrier(down_down_cell)) &&
-                (!same_color(right_down_cell, down_cell) || is_barrier(right_down_cell)) &&
-                (!same_color(left_down_cell, down_cell) || is_barrier(left_down_cell)) {
+            // King capture
+            if is_king(down_cell) {
+                // Four side capture
+                if surrounded(down_cell) {
+                    captured_checkers.push(down_cell);
+                }
+                // Two side capture
+                else if same_color(down_down_cell, down_cell) || board.cell_type(down_down_cell) == C {
+                    captured_checkers.push(down_cell);
+                }
+            }
+            // Regular checker capture
+            else if same_color(down_down_cell, moved_checker) || is_barrier(down_down_cell) {
                 captured_checkers.push(down_cell);
             }
-            // Two side capture
-            else if same_color(down_down_cell, down_cell) || board.cell_type(down_down_cell) == C {
-                captured_checkers.push(down_cell);
-            }
-        }
-        // Regular checker capture
-        else if same_color(down_down_cell, moved_checker) || is_barrier(down_down_cell) {
-            captured_checkers.push(down_cell);
         }
     }
 
     // Capture right
-    if same_color(moved_checker, right_cell) {
-        let right_right_cell = Position { x: right_cell.x+1, y: right_cell.y };
-        let up_right_cell = Position { x: right_cell.x, y: right_cell.y-1 };
-        let down_right_cell = Position { x: right_cell.x, y: right_cell.y+1 };
+    if surrounding_cells[2].is_some() {
+        let right_cell = surrounding_cells[2].unwrap();
+        if same_color(moved_checker, right_cell) && right_cell.x < 8 {
+            let right_right_cell = Position { x: right_cell.x+1, y: right_cell.y };
 
-        // King capture
-        if is_king(right_cell) {
-            // Four side capture
-            if (!same_color(right_right_cell, right_cell) || is_barrier(right_right_cell)) &&
-                (!same_color(up_right_cell, right_cell) || is_barrier(up_right_cell)) &&
-                (!same_color(down_right_cell, right_cell) || is_barrier(down_right_cell)) {
+            // King capture
+            if is_king(right_cell) {
+                // Four side capture
+                if surrounded(right_cell) {
+                    captured_checkers.push(right_cell);
+                }
+                // Two side capture
+                else if same_color(right_right_cell, right_cell) || board.cell_type(right_right_cell) == C {
+                    captured_checkers.push(right_cell);
+                }
+            }
+            // Regular checker capture
+            else if same_color(right_right_cell, moved_checker) || is_barrier(right_right_cell) {
                 captured_checkers.push(right_cell);
             }
-            // Two side capture
-            else if same_color(right_right_cell, right_cell) || board.cell_type(right_right_cell) == C {
-                captured_checkers.push(right_cell);
-            }
-        }
-        // Regular checker capture
-        else if same_color(right_right_cell, moved_checker) || is_barrier(right_right_cell) {
-            captured_checkers.push(right_cell);
         }
     }
 
-    // Capture up
-    if same_color(moved_checker, left_cell) {
-        let left_left_cell = Position { x: left_cell.x-1, y: left_cell.y };
-        let up_left_cell = Position { x: left_cell.x, y: left_cell.y-1 };
-        let down_left_cell = Position { x: left_cell.x, y: left_cell.y+1 };
+    // Capture left
+    if surrounding_cells[3].is_some() {
+        let left_cell = surrounding_cells[3].unwrap();
+        if same_color(moved_checker, left_cell) && left_cell.x > 0 {
+            let left_left_cell = Position { x: left_cell.x-1, y: left_cell.y };
 
-        // King capture
-        if is_king(left_cell) {
-            // Four side capture
-            if (!same_color(left_left_cell, left_cell) || is_barrier(left_left_cell)) &&
-                (!same_color(up_left_cell, left_cell) || is_barrier(up_left_cell)) &&
-                (!same_color(down_left_cell, left_cell) || is_barrier(down_left_cell)) {
+            // King capture
+            if is_king(left_cell) {
+                // Four side capture
+                if surrounded(left_cell) {
+                    captured_checkers.push(left_cell);
+                }
+                // Two side capture
+                else if same_color(left_left_cell, left_cell) || board.cell_type(left_left_cell) == C {
+                    captured_checkers.push(left_cell);
+                }
+            }
+            // Regular checker capture
+            else if same_color(left_left_cell, moved_checker) || is_barrier(left_left_cell) {
                 captured_checkers.push(left_cell);
             }
-            // Two side capture
-            else if same_color(left_left_cell, left_cell) || board.cell_type(left_left_cell) == C {
-                captured_checkers.push(left_cell);
-            }
-        }
-        // Regular checker capture
-        else if same_color(left_left_cell, moved_checker) || is_barrier(left_left_cell) {
-            captured_checkers.push(left_cell);
         }
     }
 
