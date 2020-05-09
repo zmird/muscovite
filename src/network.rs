@@ -1,6 +1,7 @@
 use std::io::prelude::*;
 use std::net::TcpStream;
 use std::io::Error;
+use log::info;
 
 pub struct ServerConnection {
     stream: TcpStream
@@ -11,7 +12,7 @@ impl ServerConnection {
         let server = format!("{}:{}", address, port);
         let stream: TcpStream = TcpStream::connect(&server)
             .expect(&format!("Failed to connect to `{}`", server));
-        println!("Successfully connected to {}", server);
+        info!("Successfully connected to {}", server);
         Ok(ServerConnection {
             stream
         })

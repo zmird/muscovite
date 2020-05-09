@@ -1,10 +1,10 @@
-// use crate::constants::*;
 use crate::network::ServerConnection;
 use crate::game::{State, Status, Move};
 use crate::rules::game_status;
 use crate::search::alpha_beta_search;
 use crate::serialization::*;
 use std::io::Error;
+use log::info;
 
  pub struct Player {
      connection: ServerConnection,
@@ -23,7 +23,7 @@ use std::io::Error;
 
      fn make_move(&mut self) {
          let m: Move = alpha_beta_search(&self.state, 1).unwrap();
-         println!("Chosen move: {}", m);
+         info!("Chosen move: {}", m);
          self.connection.write_string(&serialize_move(&m, &self.state.color));
      }
 
@@ -37,27 +37,27 @@ use std::io::Error;
 
 
      pub fn game_loop(&mut self) {
-         println!("=== Initial Board ===");
+         info!("=== Initial Board ===");
          self.receive_game_state();
-         println!("{}", self.state.board);
+         info!("{}", self.state.board);
 
          loop {
              if self.state.turn == self.state.color {
-                 println!("\n=== My turn ===");
+                 info!("\n\n=== My turn ===");
                  self.make_move();
              } else {
-                 println!("\n=== Enemy turn ===\n");
+                 info!("\n\n=== Enemy turn ===\n");
              }
              self.receive_game_state();
-             println!("{}", self.state.board);
+             info!("{}", self.state.board);
 
              match self.state.status {
-                 Status::WIN => { println!("WON!"); break; },
-                 Status::LOSS => { println!("LOST :("); break; },
-                 Status::DRAW => { println!("DRAW!"); break; }
+                 Status::WIN => { info!("WON!"); break; },
+                 Status::LOSS => { info!("LOST :("); break; },
+                 Status::DRAW => { info!("DRAW!"); break; }
                  Status::ONGOING => { continue; }
              }
          }
-         println!("Game ended.");
+         info!("Game ended.");
      }
  }

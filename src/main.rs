@@ -3,6 +3,9 @@ extern crate clap;
 extern crate serde;
 extern crate serde_json;
 extern crate rand;
+extern crate log;
+extern crate log4rs;
+extern crate chrono;
 
 mod network;
 mod constants;
@@ -11,11 +14,15 @@ mod rules;
 mod player;
 mod search;
 mod serialization;
+mod logging;
 
 use constants::*;
 use player::Player;
+use logging::config_logs;
 use clap::{App, Arg};
 use std::error::Error;
+use chrono::Local;
+use log::info;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = App::new("Muscovite")
@@ -68,7 +75,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    println!("
+    config_logs(format!("{}_{}.txt", Local::now().format("%Y-%m-%d_%H:%M:%S"), color));
+
+    info!(target: "main", "
                                              _ __
        ____ ___  __  ________________ _   __(_) /____
       / __ `__ \\/ / / / ___/ ___/ __ \\ | / / / __/ _ \\
