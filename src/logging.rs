@@ -6,7 +6,9 @@ use log4rs::config::{Appender, Config, Logger, Root};
 
 
 pub fn config_logs(filename: String) {
-    let stdout = ConsoleAppender::builder().build();
+    let stdout = ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{m}{n}")))
+        .build();
 
     let logfile = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{m}{n}")))
