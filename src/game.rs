@@ -55,6 +55,7 @@ impl Board {
     pub fn apply_move(&mut self, m: &Move) {
         let cell_content: u32 = self.cell_content(m.from);
         self.board[m.to.y as usize][m.to.x as usize] = cell_content;
+        self.board[m.from.y as usize][m.from.x as usize] = E;
         let checkers_captured = captures(&self, m);
         for checker in checkers_captured {
             self.board[checker.y as usize][checker.x as usize] = E;
@@ -80,10 +81,6 @@ impl Board {
         None
     }
 
-    pub fn king_cell(&self) -> Option<Position> {
-        self.filter_cells(K).first().copied()
-    }
-
     pub fn surrounding_cells(&self, p: Position) -> [Option<Position>; 4] {
         // Up Down Right Left
         let mut s: [Option<Position>; 4] = [None, None, None, None];
@@ -107,16 +104,58 @@ impl Board {
         return s;
     }
 
+    pub fn upper_cell(&self, p: Position) -> Option<Position> {
+        if p.x > 8 || p.y > 8 || p.y == 0 {
+            None
+        } else {
+            Some(Position { x: p.x, y: p.y-1 })
+        }
+    }
+
+    pub fn lower_cell(&self, p: Position) -> Option<Position> {
+        if p.x > 8 || p.y > 8 || p.y == 8 {
+            None
+        } else {
+            Some(Position { x: p.x, y: p.y+1 })
+        }
+    }
+
+    pub fn right_cell(&self, p: Position) -> Option<Position> {
+        if p.x > 8 || p.y > 8 || p.x == 8 {
+            None
+        } else {
+            Some(Position { x: p.x+1, y: p.y })
+        }
+    }
+
+    pub fn left_cell(&self, p: Position) -> Option<Position> {
+        if p.x > 8 || p.y > 8 || p.x == 0 {
+            None
+        } else {
+            Some(Position { x: p.x-1, y: p.y })
+        }
+    }
+
     pub fn is_empty(&self, p: Position) -> bool {
         self.cell_content(p) == E
     }
 
-    pub fn filter_cells(&self, cell_type: u32) -> Vec<Position> {
+    pub fn is_king_in_throne(&self) -> bool {
+        let king = self.king_cell();
+        if king.is_none() {
+            false
+        } else {
+            self.cell_type(king.unwrap()) == T
+        }
+
+    }
+
+    pub fn filter_cells(&self, cell_content: u32) -> Vec<Position> {
         let mut cells: Vec<Position> = vec![];
         for (y, row) in self.board.iter().enumerate() {
             // println!("{:?}", row);
             for (x, cell) in row.iter().enumerate() {
-                if cell == &cell_type {
+                if cell == &cell_content {
                     let position = Position {
                         x: x as u32,
                         y: y as u32
@@ -127,6 +166,10 @@ impl Board {
             }
         }
         cells
+    }
+
+    pub fn king_cell(&self) -> Option<Position> {
+        self.filter_cells(K).first().copied()
     }
 
     pub fn white_cells(&self) -> Vec<Position> {
@@ -177,7 +220,7 @@ impl fmt::Display for Board {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
     WIN,
     LOSS,
@@ -200,8 +243,13 @@ impl State {
             color,
             board: Board::init(),
             turn: WHITE.to_string(),
-            history: vec![],
+            history: vec![Board::init()],
             status: Status::ONGOING
         }
+    }
+
+    pub fn apply_move(&mut self, m: &Move) {
+        self.history.push(self.board);
+        self.board.apply_move(&m);
     }
 }
