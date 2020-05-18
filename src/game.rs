@@ -21,7 +21,7 @@ impl fmt::Display for Position {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Move {
     pub from: Position,
     pub to: Position
@@ -104,6 +104,29 @@ impl Board {
         return s;
     }
 
+    pub fn surrounding_diagonal_cells(&self, p: Position) -> [Option<Position>; 4] {
+        let mut s: [Option<Position>; 4] = [None, None, None, None];
+
+        // Up Right
+        if p.y > 0 && p.x < 8 {
+            s[0] = Some(Position { x: p.x+1, y: p.y-1 });
+        }
+        // Up Left
+        if p.y > 0 && p.x > 0 {
+            s[1] = Some(Position { x: p.x-1, y: p.y-1 });
+        }
+        // Down Right
+        if p.y < 8 && p.x < 8 {
+            s[2] = Some(Position { x: p.x+1, y: p.y+1 });
+        }
+        // Down Left
+        if p.y < 8 && p.x > 0 {
+            s[3] = Some(Position { x: p.x-1, y: p.y+1 });
+        }
+
+        return s;
+    }
+
     pub fn upper_cell(&self, p: Position) -> Option<Position> {
         if p.x > 8 || p.y > 8 || p.y == 0 {
             None
@@ -136,20 +159,6 @@ impl Board {
         }
     }
 
-    pub fn is_empty(&self, p: Position) -> bool {
-        self.cell_content(p) == E
-    }
-
-    pub fn is_king_in_throne(&self) -> bool {
-        let king = self.king_cell();
-        if king.is_none() {
-            false
-        } else {
-            self.cell_type(king.unwrap()) == T
-        }
-
-    }
-
     pub fn filter_cells(&self, cell_content: u32) -> Vec<Position> {
         let mut cells: Vec<Position> = vec![];
         for (y, row) in self.board.iter().enumerate() {
@@ -178,6 +187,29 @@ impl Board {
 
     pub fn black_cells(&self) -> Vec<Position> {
         self.filter_cells(B)
+    }
+
+    pub fn is_empty(&self, p: Position) -> bool {
+        self.cell_content(p) == E
+    }
+
+    pub fn is_king_in_throne(&self) -> bool {
+        let king = self.king_cell();
+        if king.is_none() {
+            false
+        } else {
+            self.cell_type(king.unwrap()) == T
+        }
+
+    }
+
+    pub fn is_king_next_throne(&self) -> bool {
+        let king = self.king_cell();
+        if king.is_none() {
+            return false;
+        }
+        self.surrounding_cells(king.unwrap()).iter()
+            .any(|cell| cell.is_some() && self.cell_type(cell.unwrap()) == T)
     }
 
 }
