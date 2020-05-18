@@ -6,6 +6,7 @@ extern crate rand;
 extern crate log;
 extern crate log4rs;
 extern crate chrono;
+extern crate crossbeam;
 
 mod network;
 mod constants;

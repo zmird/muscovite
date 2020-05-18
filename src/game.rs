@@ -182,7 +182,9 @@ impl Board {
     }
 
     pub fn white_cells(&self) -> Vec<Position> {
-        self.filter_cells(W)
+        let mut cells = self.filter_cells(W);
+        cells.push(self.king_cell().unwrap());
+        cells
     }
 
     pub fn black_cells(&self) -> Vec<Position> {
@@ -283,5 +285,58 @@ impl State {
     pub fn apply_move(&mut self, m: &Move) {
         self.history.push(self.board);
         self.board.apply_move(&m);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_board_cell_content() {
+        let board = Board::new([
+            [0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0],
+            [2, 0, 0, 1, 3, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 2, 0, 2, 2],
+            [2, 0, 0, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        let cell_content = board.cell_content(Position {
+            x: 5,
+            y: 2
+        });
+        assert_eq!(cell_content, B);
+    }
+
+    #[test]
+    fn test_board_apply_move() {
+        let mut board = Board::new([
+            [0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0],
+            [2, 0, 0, 1, 3, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 2, 0, 2, 2],
+            [2, 0, 0, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        let m: Move = Move {
+            from: Position {
+                x: 5,
+                y: 2
+            },
+            to: Position {
+                x: 5,
+                y: 3
+            }
+        };
+        board.apply_move(&m);
+        assert!(board.is_empty(Position { x: 5, y: 2}));
+        assert_eq!(board.cell_content(Position { x: 5, y: 3 }), B);
     }
 }
