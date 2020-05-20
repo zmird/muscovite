@@ -1,8 +1,9 @@
 use crate::game::{Move, Position, Status, State, Board};
 use crate::constants::*;
-use log::debug;
+// use log::debug;
 
 // Returns the opposite color
+#[allow(dead_code)]
 pub fn get_opposite_color(color: &String) -> String {
     if color == WHITE {
         BLACK.to_string()
@@ -13,16 +14,16 @@ pub fn get_opposite_color(color: &String) -> String {
 
 // Returns a cell closer by one to destination
 fn get_one_cell_closer(from: Position, to: Position) -> Option<Position> {
-    if from.x == to.x && from.y < from.y {
+    if from.x == to.x && from.y < to.y {
         return Some(Position { x: from.x, y: from.y+1 });
     }
-    if from.x == to.x && from.y > from.y {
+    if from.x == to.x && from.y > to.y {
         return Some(Position { x: from.x, y: from.y-1 });
     }
-    if from.y == to.y && from.x < from.x {
+    if from.y == to.y && from.x < to.x {
         return Some(Position { x: from.x+1, y: from.y });
     }
-    if from.y == to.y && from.x < from.x {
+    if from.y == to.y && from.x > to.x {
         return Some(Position { x: from.x-1, y: from.y });
     }
     return None;
@@ -36,11 +37,12 @@ pub fn is_barrier(board: &Board, cell: Position) -> bool {
 
 // Return true if there are obstacles
 pub fn obstacles(state: &State, m: &Move) -> bool {
-    let mut p: Position = m.to;
-    while (m.from.x == m.to.x && p.y != m.to.y) ||
-        (m.from.y == m.to.y && p.x != m.to.x) {
-        p = get_one_cell_closer(m.from, p).unwrap();
-        if !is_legal_target_cell(state, p) {
+    let mut from: Position = m.from;
+    let to: Position = m.to.clone();
+    while (from.x == to.x && from.y != to.y) ||
+        (from.y == to.y && from.x != to.x) {
+        from = get_one_cell_closer(from, to).unwrap();
+        if !is_legal_target_cell(state, from) {
             return true;
         }
     }
@@ -48,7 +50,7 @@ pub fn obstacles(state: &State, m: &Move) -> bool {
 }
 
 // Checks if a cell is empty and regular
-fn is_legal_target_cell(state: &State, cell: Position) -> bool {
+pub fn is_legal_target_cell(state: &State, cell: Position) -> bool {
     let cell_type: u32 = state.board.cell_type(cell);
     state.board.is_empty(cell) && (cell_type == R || cell_type == F)
 }
@@ -86,7 +88,6 @@ pub fn legal_moves(state: &State) -> Vec<Move> {
 
     if color == WHITE {
         cells = board.white_cells();
-        cells.push(board.king_cell().unwrap());
     }
     else if color == BLACK {
         cells = board.black_cells();
@@ -209,12 +210,10 @@ pub fn captures(board: &Board, m: &Move) -> Vec<Position> {
             if is_king(up_cell) {
                 // Four side capture
                 if surrounded(up_cell) {
-                    //debug!("Four side king capture up");
                     captured_checkers.push(up_cell);
                 }
                 // Two side capture
-                else if !board.is_king_in_throne() && same_color(up_up_cell, moved_checker) || board.cell_type(up_up_cell) == C {
-                    //debug!("Two side king capture up");
+                else if !board.is_king_in_throne() && (same_color(up_up_cell, moved_checker) || board.cell_type(up_up_cell) == C) {
                     captured_checkers.push(up_cell);
                 }
             }
@@ -236,12 +235,10 @@ pub fn captures(board: &Board, m: &Move) -> Vec<Position> {
             if is_king(down_cell) {
                 // Four side capture
                 if surrounded(down_cell) {
-                    //debug!("Four side king capture down");
                     captured_checkers.push(down_cell);
                 }
                 // Two side capture
-                else if !board.is_king_in_throne() && same_color(down_down_cell, moved_checker) || board.cell_type(down_down_cell) == C {
-                    //debug!("Two side king capture down");
+                else if !board.is_king_in_throne() && (same_color(down_down_cell, moved_checker) || board.cell_type(down_down_cell) == C) {
                     captured_checkers.push(down_cell);
                 }
             }
@@ -263,12 +260,10 @@ pub fn captures(board: &Board, m: &Move) -> Vec<Position> {
             if is_king(right_cell) {
                 // Four side capture
                 if surrounded(right_cell) {
-                    //debug!("Four side king capture right");
                     captured_checkers.push(right_cell);
                 }
                 // Two side capture
-                else if !board.is_king_in_throne() && same_color(right_right_cell, moved_checker) || board.cell_type(right_right_cell) == C {
-                    //debug!("Two side king capture right");
+                else if !board.is_king_in_throne() && (same_color(right_right_cell, moved_checker) || board.cell_type(right_right_cell) == C) {
                     captured_checkers.push(right_cell);
                 }
             }
@@ -290,12 +285,10 @@ pub fn captures(board: &Board, m: &Move) -> Vec<Position> {
             if is_king(left_cell) {
                 // Four side capture
                 if surrounded(left_cell) {
-                    //debug!("Four side king capture left");
                     captured_checkers.push(left_cell);
                 }
                 // Two side capture
-                else if !board.is_king_in_throne() && same_color(left_left_cell, moved_checker) || board.cell_type(left_left_cell) == C {
-                    //debug!("Two side king capture left");
+                else if !board.is_king_in_throne() && (same_color(left_left_cell, moved_checker) || board.cell_type(left_left_cell) == C) {
                     captured_checkers.push(left_cell);
                 }
             }
@@ -319,110 +312,27 @@ pub fn game_status(state: &State) -> Status {
 
     // King not present on board
     if king_cell.is_none() && color == WHITE {
-        //debug!("King not present on the board: LOSS");
         return Status::LOSS;
     }
     if king_cell.is_none() && color == BLACK {
-        //debug!("King not present on the board: WIN");
         return Status::WIN;
     }
 
     // King on escape cell
     if board.cell_type(king_cell.unwrap()) == F && color == WHITE {
-        //debug!("King escaped: WIN");
         return Status::WIN;
     }
     if board.cell_type(king_cell.unwrap()) == F && color == BLACK {
-        //debug!("King escaped: LOSS");
         return Status::LOSS;
-    }
-
-    // Check if king is captured
-    if history.len() >= 2 {
-        // Current king position
-        let ck: Position = king_cell.unwrap();
-        // Previous king position
-        let pk: Position = history.split_at(history.len()-2).1.first().unwrap().king_cell().unwrap();
-        // Check if king is in throne or regular cell
-        let king_type: u32 = board.cell_type(ck);
-
-        let up_cell = Position { x: ck.x, y: ck.y - 1 };
-        let down_cell = Position { x: ck.x, y: ck.y + 1 };
-        let right_cell = Position { x: ck.x + 1, y: ck.y };
-        let left_cell = Position { x: ck.x - 1, y: ck.y };
-
-        let previous_up_cell = Position { x: pk.x, y: pk.y - 1 };
-        let previous_down_cell = Position { x: pk.x, y: pk.y + 1 };
-        let previous_right_cell = Position { x: pk.x + 1, y: pk.y };
-        let previous_left_cell = Position { x: pk.x - 1, y: pk.y };
-
-        // King is in same position and at least one cell around changed
-        if ck == pk && !(up_cell != previous_up_cell ||
-           down_cell != previous_down_cell ||
-           right_cell != previous_right_cell ||
-           left_cell != previous_left_cell) {
-
-            let up_content: u32 = board.cell_content(up_cell);
-            let down_content: u32 = board.cell_content(down_cell);
-            let right_content: u32 = board.cell_content(right_cell);
-            let left_content: u32 = board.cell_content(left_cell);
-
-            let up_type: u32 = board.cell_type(up_cell);
-            let down_type: u32 = board.cell_type(down_cell);
-            let right_type: u32 = board.cell_type(right_cell);
-            let left_type: u32 = board.cell_type(left_cell);
-
-            // King surrounded adjacent to throne
-            if king_type == R &&
-               (up_type == T || up_content == B) &&
-               (down_type == T || down_content == B) &&
-               (right_type == T || right_content == B) &&
-               (left_type == T || left_content == B) {
-                //debug!("King surrounded adjacent to throne");
-                if color == WHITE {
-                    return Status::LOSS;
-                } else {
-                    return Status::WIN;
-                }
-            }
-
-            // King capture on 4 sides
-            if up_content == B &&
-               down_content == B &&
-               right_content == B &&
-               left_content == B {
-                //debug!("King capture on 4 sides");
-                if color == WHITE {
-                    return Status::LOSS;
-                } else {
-                    return Status::WIN;
-                }
-            }
-
-            // King regular capture on 2 sides with king not adjacent to throne
-            if (up_type != T && down_type != T && right_type != T && left_type != T) &&
-               (((up_content == B || up_type == C) && (down_content == B || down_type == C)) ||
-               ((right_content == B || right_type == C) && (left_content == B || left_type == C))) {
-                //debug!("King regular capture on 2 sides");
-                if color == WHITE {
-                    return Status::LOSS;
-                } else {
-                    return Status::WIN;
-                }
-            }
-        }
-
     }
 
     // TODO optimize
     // No moves possible
     if legal_moves(state).len() == 0 {
-        //debug!("No legal moves: LOSS");
         return Status::LOSS;
     }
 
     if history.len() > 3 && history.split_at(history.len()-2).0.contains(board) {
-        //debug!("Same state twice: DRAW");
         return Status::DRAW;
     }
 
@@ -433,7 +343,34 @@ pub fn game_status(state: &State) -> Status {
 mod tests {
     use crate::constants::*;
     use crate::game::{Move, Position, Status, State, Board};
-    use crate::rules::{legal_moves, captures, game_status};
+    use crate::rules::{legal_moves, captures, game_status, obstacles};
+
+    #[test]
+    fn test_obstacles() {
+        let mut state = State::init(BLACK.to_string());
+        state.board = Board::new([
+            [0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 3, 2, 0, 0, 0],
+            [2, 0, 0, 1, 0, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 2, 0, 2, 2],
+            [2, 0, 0, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        let m: Move = Move {
+            from: Position {
+                x: 4,
+                y: 2
+            },
+            to: Position {
+                x: 0,
+                y: 2
+            }
+        };
+        assert!(!obstacles(&state, &m));
+    }
 
     #[test]
     fn test_captures() {
@@ -710,6 +647,30 @@ mod tests {
         };
         let c = captures(&board, &m);
         assert_eq!(c, vec![Position {x: 4, y: 2}]);
+
+        let board = Board::new([
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 1, 2, 0, 0, 2, 0, 0, 0],
+            [2, 0, 3, 0, 0, 2, 0, 0, 0],
+            [2, 2, 2, 2, 0, 2, 0, 2, 2],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0]
+        ]);
+        let m = Move {
+            from: Position {
+                x: 2,
+                y: 5
+            },
+            to: Position {
+                x: 2,
+                y: 4
+            }
+        };
+        let c = captures(&board, &m);
+        assert_eq!(c, vec![Position {x: 2, y: 3}]);
     }
 
     #[test]
