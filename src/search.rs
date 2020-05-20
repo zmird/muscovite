@@ -457,7 +457,7 @@ pub fn iterative_time_bound_alpha_beta_search(state: &State, depth: u32, end_ins
         let result = time_bound_alpha_beta_search(state, current_depth, end_instant);
         let completed = result.2;
         if !completed {
-            info!("Depth {} not completed, discarding it", current_depth);
+            // info!("Depth {} not completed, discarding it", current_depth);
             break;
         }
         if best_action.is_none() {
@@ -481,7 +481,7 @@ pub fn iterative_time_bound_alpha_beta_search(state: &State, depth: u32, end_ins
         if (state.color == WHITE && best_value == std::i32::MAX) || (state.color == BLACK && best_value == std::i32::MIN) {
             break;
         }
-        info!("Depth {} in {:?} with chosen move {} with value {}", current_depth, start_instant.elapsed(), result.0.unwrap(), result.1);
+        // info!("Depth {} in {:?} with chosen move {} with value {}", current_depth, start_instant.elapsed(), result.0.unwrap(), result.1);
         current_depth += 1;
     }
     best_action

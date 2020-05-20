@@ -41,20 +41,20 @@ pub struct Player {
 
 
      pub fn game_loop(&mut self) {
-         info!("=== Initial Board ===");
+         // info!("=== Initial Board ===");
          self.receive_game_state();
-         info!("{}", self.state.board);
+         // info!("{}", self.state.board);
 
          loop {
              if self.state.turn == self.state.color {
-                 info!("\n\n=== My turn ===");
+                 // info!("\n\n=== My turn ===");
                  self.make_move();
              } else {
-                 info!("\n\n=== Enemy turn ===\n");
+                 // info!("\n\n=== Enemy turn ===\n");
              }
              self.receive_game_state();
-             info!("{}", self.state.board);
-             info!("{:?}", self.state.board);
+             // info!("{}", self.state.board);
+             // info!("{:?}", self.state.board);
 
              match self.state.status {
                  Status::WIN => { info!("WON!"); break; },
