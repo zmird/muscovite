@@ -9,22 +9,24 @@ use std::time::{Instant, Duration};
 
 pub struct Player {
      connection: ServerConnection,
-     state: State
+     state: State,
+     timeout: u64
  }
 
  impl Player {
-     pub fn init(name: String, color: String, address: String, port: u32) -> Result<Player, Error> {
+     pub fn init(name: String, color: String, address: String, port: u32, timeout: u64) -> Result<Player, Error> {
          let mut connection = ServerConnection::connect(&address, port)?;
          connection.write_string(&name);
          Ok(Player {
              connection,
-             state: State::init(color)
+             state: State::init(color),
+             timeout
          })
      }
 
      fn make_move(&mut self) {
          let start_instant = Instant::now();
-         let end_instant = start_instant.checked_add(Duration::new(58, 0)).unwrap();
+         let end_instant = start_instant.checked_add(Duration::new(self.timeout-1, 0)).unwrap();
          let m: Move = iterative_time_bound_alpha_beta_search(&self.state, 6, end_instant).unwrap();
          // let m: Move = alpha_beta_search(&self.state, 3).0.unwrap();
          info!("Chosen move: {} in {:?}", m, start_instant.elapsed());

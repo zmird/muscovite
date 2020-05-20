@@ -452,7 +452,7 @@ pub fn iterative_time_bound_alpha_beta_search(state: &State, depth: u32, end_ins
     };
     let mut current_depth: u32 = 0;
 
-    let start_instant = Instant::now();
+    // let start_instant = Instant::now();
     while current_depth <= depth && Instant::now() < end_instant {
         let result = time_bound_alpha_beta_search(state, current_depth, end_instant);
         let completed = result.2;

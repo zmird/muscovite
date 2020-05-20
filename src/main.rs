@@ -50,6 +50,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             .long("port")
             .help("Server ip port")
             .takes_value(true))
+        .arg(Arg::with_name("timeout")
+            .short("t")
+            .long("timeout")
+            .help("Timeout for move")
+            .takes_value(true))
         .get_matches();
 
     let color: String = value_t!(matches, "color", String).unwrap().to_lowercase();
@@ -76,6 +81,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    let timeout: u64;
+    let result = value_t!(matches, "timeout", u64);
+    match result {
+        Ok(t) => { timeout = t; },
+        Err(_e) => {
+            timeout = 60;
+        }
+    }
+
+    let color: String = value_t!(matches, "color", String).unwrap().to_lowercase();
+
     config_logs(format!("{}_{}.txt", Local::now().format("%Y-%m-%d_%H:%M:%S"), color));
 
     info!(target: "main", "
@@ -85,12 +101,15 @@ fn main() -> Result<(), Box<dyn Error>> {
      / / / / / / /_/ (__  ) /__/ /_/ / |/ / / /_/  __/
     /_/ /_/ /_/\\__,_/____/\\___/\\____/|___/_/\\__/\\___/
 
-    name: {name}\tcolor: {color}
-    address: {address}\tport: {port}
+    name: {name}
+    color: {color}
+    address: {address}
+    port: {port},
+    timeout: {timeout}
 
-    ", name=name, color=color, address=address, port=port);
+    ", name=name, color=color, address=address, port=port, timeout=timeout);
 
-    let mut player = Player::init(name, color, address, port)?;
+    let mut player = Player::init(name, color, address, port, timeout)?;
     player.game_loop();
     Ok(())
 }
