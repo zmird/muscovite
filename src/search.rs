@@ -1,9 +1,10 @@
 use crate::constants::*;
 use crate::game::{Move, State, Status, Position};
-use crate::rules::{legal_moves, game_status, obstacles, is_barrier, get_opposite_color};
+use crate::rules::{legal_moves, game_status, obstacles, is_barrier, get_opposite_color, is_legal_target_cell};
 use std::cmp::{max, min};
-use log::debug;
+use std::time::Instant;
 use rand::Rng;
+use log::info;
 
 fn actions(state: &State) -> Vec<Move> {
     legal_moves(state)
@@ -12,6 +13,7 @@ fn actions(state: &State) -> Vec<Move> {
 fn result(state: &State, m: &Move) -> State {
     let mut new_state: State = state.clone();
     new_state.apply_move(m);
+    new_state.color = get_opposite_color(&new_state.color);
     new_state
 }
 
@@ -35,16 +37,17 @@ pub fn heuristic(state: &State) -> i32 {
     let status = game_status(state);
 
     if status == Status::WIN {
-        debug!("WIN move");
-        return std::i32::MAX;
+        return if state.color == WHITE { std::i32::MAX } else { std::i32::MIN };
     }
     if status == Status::LOSS {
-        debug!("LOSS move");
-        return std::i32::MIN;
+        return if state.color == WHITE { std::i32::MIN } else { std::i32::MAX };
     }
     if status == Status::DRAW {
         return 0;
     }
+
+    // Checker variation
+    let current_checker_difference = board.white_cells().len() as i32 - board.black_cells().len() as i32 + 7;
 
     let king: Position = board.king_cell().unwrap();
     let previous_king: Position = if previous_board.is_some() {
@@ -52,64 +55,89 @@ pub fn heuristic(state: &State) -> i32 {
     } else {
         king
     };
+    let king_moved: bool = king != previous_king;
     let king_surrounding_cells: [Option<Position>; 4] = board.surrounding_cells(king);
-
-    // Checker variation
-    let current_checker_difference = board.white_cells().len() as i32 - board.black_cells().len() as i32 + 8;
-    let previous_checker_difference = if previous_board.is_some() {
-        previous_board.unwrap().white_cells().len() as i32 - previous_board.unwrap().black_cells().len() as i32 + 8
-    } else {
-        current_checker_difference
-    };
+    let previous_king_surrounding_cells: [Option<Position>; 4] = previous_board.unwrap().surrounding_cells(king);
+    let king_surrounding_cells_diagonal: [Option<Position>; 4] = board.surrounding_diagonal_cells(king);
 
     // King position
-    let king_in_throne: bool = board.cell_type(king) == T;
-    let king_next_throne: bool = king_surrounding_cells.iter()
-        .any(|cell| cell.is_some() && board.cell_type(cell.unwrap()) == T);
+    let king_in_throne: bool = board.is_king_in_throne();
+    let king_next_throne: bool = board.is_king_next_throne();
 
-    // King escapes
-    let mut king_escapes: i32 = 0;
-    let possible_king_escapes: [Position; 4] = [
-        Position { x: king.x, y: 0 },
-        Position { x: king.x, y: 8 },
-        Position { x: 0, y: king.y },
-        Position { x: 8, y: king.y }
-    ];
-    for cell in possible_king_escapes.iter() {
-        if board.cell_type(*cell) == F && !obstacles(state, &Move{ from: king, to: *cell }) {
-            king_escapes += 1;
+    fn get_king_escapes(state: &State, king: Position) -> u32 {
+        let mut king_escapes: u32 = 0;
+        let possible_king_escapes: [Position; 4] = [
+            Position { x: king.x, y: 0 },
+            Position { x: king.x, y: 8 },
+            Position { x: 0, y: king.y },
+            Position { x: 8, y: king.y }
+        ];
+        for cell in possible_king_escapes.iter() {
+            if state.board.cell_type(*cell) == F && !obstacles(state, &Move{ from: king, to: *cell }) {
+                king_escapes += 1;
+            }
         }
+        king_escapes
     }
 
-    // White checkers in respect to king
-    let white_checkers_around_king = king_surrounding_cells.iter()
-        .fold(0, |acc, cell| if cell.is_some() && board.cell_content(cell.unwrap()) == W { acc + 1} else { acc });
-    let previous_white_checkers_aroung_king: i32 = if previous_board.is_some() {
-        previous_board.unwrap().surrounding_cells(previous_king).iter()
-            .fold(0, |acc, cell| if cell.is_some() && previous_board.unwrap().cell_content(cell.unwrap()) == W { acc + 1} else { acc })
-    } else {
-        white_checkers_around_king
-    };
+    // King escapes
+    let king_escapes: i32 = get_king_escapes(state, king) as i32;
+
+    // King escapes in one move
+    let mut king_escapes_in_one_move: u32 = 0;
+    let mut king_up = board.upper_cell(king);
+    while king_up.is_some() && is_legal_target_cell(state, king_up.unwrap()) {
+        let escapes = get_king_escapes(state, king_up.unwrap());
+        if escapes > king_escapes_in_one_move {
+            king_escapes_in_one_move = escapes;
+        }
+        king_up = board.upper_cell(king_up.unwrap());
+    }
+    let mut king_down = board.lower_cell(king);
+    while king_down.is_some() && is_legal_target_cell(state, king_down.unwrap()) {
+        let escapes = get_king_escapes(state, king_down.unwrap());
+        if escapes > king_escapes_in_one_move {
+            king_escapes_in_one_move = escapes;
+        }
+        king_down = board.lower_cell(king_down.unwrap());
+    }
+    let mut king_right = board.right_cell(king);
+    while king_right.is_some() && is_legal_target_cell(state, king_right.unwrap()) {
+        let escapes = get_king_escapes(state, king_right.unwrap());
+        if escapes > king_escapes_in_one_move {
+            king_escapes_in_one_move = escapes;
+        }
+        king_right = board.right_cell(king_right.unwrap());
+    }
+    let mut king_left = board.left_cell(king);
+    while king_left.is_some() && is_legal_target_cell(state, king_left.unwrap()) {
+        let escapes = get_king_escapes(state, king_left.unwrap());
+        if escapes > king_escapes_in_one_move {
+            king_escapes_in_one_move = escapes;
+        }
+        king_left = board.left_cell(king_left.unwrap());
+    }
 
     // Black checkers in respect to king
     let black_checkers_around_king = king_surrounding_cells.iter()
         .fold(0, |acc, cell| if cell.is_some() && board.cell_content(cell.unwrap()) == B { acc + 1} else { acc });
-    let previous_black_checkers_aroung_king: i32 = if previous_board.is_some() {
-        previous_board.unwrap().surrounding_cells(previous_king).iter()
+    let previous_black_checkers_around_king = if previous_board.is_some() {
+        previous_king_surrounding_cells.iter()
             .fold(0, |acc, cell| if cell.is_some() && previous_board.unwrap().cell_content(cell.unwrap()) == B { acc + 1} else { acc })
     } else {
         black_checkers_around_king
     };
+    let black_checkers_around_king_changed: bool = black_checkers_around_king != previous_black_checkers_around_king;
+    let black_checkers_around_king_diagonal = king_surrounding_cells_diagonal.iter()
+        .fold(0, |acc, cell| if cell.is_some() && board.cell_content(cell.unwrap()) == B { acc + 1} else { acc });
 
     let mut black_checkers_around_king_in_one_move: Vec<Position> = vec![];
-    for surrounding_cell in king_surrounding_cells.iter() {
-        if surrounding_cell.is_none() ||
-            !state.board.is_empty(surrounding_cell.unwrap()) ||
-            is_barrier(&state.board, surrounding_cell.unwrap()) {
-            continue;
-        }
-
-        let mut up: Option<Position> = *surrounding_cell;
+    let mut up: Option<Position> = king_surrounding_cells[0];
+    let mut down: Option<Position> = king_surrounding_cells[1];
+    let mut right: Option<Position> = king_surrounding_cells[2];
+    let mut left: Option<Position> = king_surrounding_cells[3];
+    if up.is_some() && down.is_some() && board.cell_content(down.unwrap()) == B &&
+        (state.board.is_empty(up.unwrap()) || is_barrier(&state.board, up.unwrap())) {
         loop {
             up = state.board.upper_cell(up.unwrap());
             if up.is_some() {
@@ -128,7 +156,9 @@ pub fn heuristic(state: &State) -> i32 {
                 break;
             }
         }
-        let mut down: Option<Position> = *surrounding_cell;
+    }
+    if down.is_some() && up.is_some() && board.cell_content(up.unwrap()) == B &&
+        (state.board.is_empty(down.unwrap()) || is_barrier(&state.board, down.unwrap())) {
         loop {
             down = state.board.lower_cell(down.unwrap());
             if down.is_some() {
@@ -147,7 +177,9 @@ pub fn heuristic(state: &State) -> i32 {
                 break;
             }
         }
-        let mut right: Option<Position> = *surrounding_cell;
+    }
+    if right.is_some() && left.is_some() && board.cell_content(left.unwrap()) == B &&
+        (state.board.is_empty(right.unwrap()) || is_barrier(&state.board, right.unwrap())) {
         loop {
             right = state.board.right_cell(right.unwrap());
             if right.is_some() {
@@ -166,7 +198,9 @@ pub fn heuristic(state: &State) -> i32 {
                 break;
             }
         }
-        let mut left: Option<Position> = *surrounding_cell;
+    }
+    if left.is_some() && right.is_some() && board.cell_content(right.unwrap()) == B &&
+        (state.board.is_empty(left.unwrap()) || is_barrier(&state.board, left.unwrap())) {
         loop {
             left = state.board.left_cell(left.unwrap());
             if left.is_some() {
@@ -188,110 +222,93 @@ pub fn heuristic(state: &State) -> i32 {
     }
 
     // Barriers in respect to king
-    let barriers_around_king: u32 = king_surrounding_cells.iter()
-        .fold(0, |acc, cell| if cell.is_some() && is_barrier(&state.board, cell.unwrap()){ acc } else { acc });
+    let barriers_around_king: u32 = king_surrounding_cells.iter().fold(0, |acc, cell| if cell.is_some() && is_barrier(&state.board, cell.unwrap()){ acc } else { acc });
 
     let position_weights: [[i32; 9]; 9] = [
-        [0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 2, 5, 2, 0, 2, 5, 2, 0],
-        [0, 5, 5, 5, 5, 5, 5, 5, 0],
-        [0, 2, 5, 0, 0, 0, 5, 2, 0],
-        [0, 0, 5, 0, -10, 0, 5, 0, 0],
-        [0, 2, 5, 0, 0, 0, 5, 2, 0],
-        [0, 5, 5, 5, 5, 5, 5, 5, 0],
-        [0, 2, 5, 2, 0, 2, 5, 2, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0]
+        [0,  0,  0,  0,  0,  0,  0,  0,  0],
+        [0,  5, 10,  0,  0,  0, 10,  5,  0],
+        [0,  5, 10,  5,  5,  5, 10,  5,  0],
+        [0,  0,  0,  0,  0,  0,  0,  0,  0],
+        [0,  0,  5,  0, -10,  0,  5,  0,  0],
+        [0,  0,  0,  0,  0,  0,  0,  0,  0],
+        [0,  5, 10,  5,  5,  5, 10,  5,  0],
+        [0,  5, 10,  0,  0,  0, 10,  5,  0],
+        [0,  0,  0,  0,  0,  0,  0,  0,  0],
     ];
 
+    // WINNING IN ONE MOVE
+    if king_escapes >= 2 && (barriers_around_king == 0 || black_checkers_around_king <= 1) {
+        return 10000;
+    }
 
-    debug!("Heuristic:\n{}\n{:?}\n\tKing in throne: {}\n\tKing next to throne: {}\n\tEscapes: {}\n\tWhite checkers around king: {}\n\tPrevious White checkers around king: {}\n\tBarriers around king: {}\n\tBlack checkers around king: {}\n\tBlack checkers around king in one move: {}", board, board, king_in_throne, king_next_throne, king_escapes, white_checkers_around_king, previous_white_checkers_aroung_king, barriers_around_king, black_checkers_around_king, black_checkers_around_king_in_one_move.len());
+    // WINNING IN TWO MOVES
+    if king_escapes_in_one_move >= 2 && king_in_throne && black_checkers_around_king <= 3 && black_checkers_around_king_in_one_move.len() == 0 {
+        return 5000;
+    }
+    if king_escapes_in_one_move >= 2 && king_in_throne && black_checkers_around_king <= 2 {
+        return 5000;
+    }
+    if king_escapes_in_one_move >= 2 && king_next_throne && black_checkers_around_king <= 2 && black_checkers_around_king_in_one_move.len() == 0 {
+        return 5000;
+    }
+    if king_escapes_in_one_move >= 2 && king_next_throne && black_checkers_around_king <= 1 {
+        return 5000;
+    }
+    if king_escapes_in_one_move >= 2 && !king_in_throne && !king_next_throne && black_checkers_around_king <= 1 && black_checkers_around_king_in_one_move.len() == 0 {
+        return 5000;
+    }
+    if king_escapes_in_one_move >= 2 && !king_in_throne && !king_next_throne && black_checkers_around_king == 0 {
+        return 5000;
+    }
 
-    // WINNING AND LOSING CONDITIONS
-    if king_escapes >= 2 && barriers_around_king == 0 && black_checkers_around_king == 0 && black_checkers_around_king_in_one_move.len() == 0 {
-        debug!("Choose 1");
-        return std::i32::MAX;
+    // LOSING IN ONE MOVE
+    if king_moved && !king_in_throne && !king_next_throne && barriers_around_king > 0 && black_checkers_around_king_in_one_move.len() > 0 {
+        return -10000;
     }
-    if !king_in_throne && barriers_around_king > 0 && black_checkers_around_king_in_one_move.len() > 0 {
-        debug!("Choose: 2");
-        return std::i32::MIN;
+    if king_moved && !king_in_throne && !king_next_throne && !king_moved && barriers_around_king == 0 && black_checkers_around_king_changed && black_checkers_around_king >= 1 && black_checkers_around_king_in_one_move.len() >= 1 {
+        return -10000;
     }
-    if !king_in_throne && barriers_around_king == 0 && black_checkers_around_king >= 1 && black_checkers_around_king_in_one_move.len() >= 1 {
-        debug!("Choose: 3");
-        return std::i32::MIN;
+    if king_moved && king_next_throne && !king_moved && black_checkers_around_king_changed && black_checkers_around_king >= 2 && black_checkers_around_king_in_one_move.len() >= 1 {
+        return -10000;
     }
-    if king_next_throne && black_checkers_around_king >= 2 && black_checkers_around_king_in_one_move.len() >= 1 {
-        debug!("Choose: 4");
-        return std::i32::MIN;
-    }
-    if king_in_throne && black_checkers_around_king >= 3 && black_checkers_around_king_in_one_move.len() >= 1 {
-        debug!("Choose: 5");
-        return std::i32::MIN;
+    if king_moved && king_in_throne && !king_moved && black_checkers_around_king_changed && black_checkers_around_king >= 3 && black_checkers_around_king_in_one_move.len() >= 1 {
+        return -10000;
     }
 
     // Value calculation
     let mut value: i32 = 0;
 
     // Checkers variation
-    value += (current_checker_difference - previous_checker_difference) * 5;
+    value += current_checker_difference * 25;
 
     // King escapes
-    value += king_escapes * 10;
+    value += king_escapes * 70;
+
+    // King escapes in one move
+    value += king_escapes_in_one_move as i32 * 35;
 
     // Barriers around king
     value -= barriers_around_king as i32 * 5;
 
     // Black checkers around king
-    value -= black_checkers_around_king * 5;
+    value -= black_checkers_around_king * 10;
 
-    // Black checkers around king in one move
-    // value -= black_checkers_around_king_in_one_move.len() as usize;
+    // Black checker around king diagonal
+    value -= black_checkers_around_king_diagonal * 10;
 
-    // King captures risks
-    if king_escapes == 1 && barriers_around_king == 0 && black_checkers_around_king == 0 && black_checkers_around_king_in_one_move.len() == 0 {
-        debug!("Applied: 1");
-        value += 15;
-    }
-    // if !king_in_throne && barriers_around_king == 0 && black_checkers_around_king == 1 && black_checkers_around_king_in_one_move.len() == 0 {
-    //     debug!("Applied: 2");
-    //     value += -5;
-    // }
-    // if !king_in_throne && barriers_around_king >= 1 && black_checkers_around_king == 0 && black_checkers_around_king_in_one_move.len() == 0 {
-    //     debug!("Applied: 3");
-    //     value += -5;
-    // }
-    if king_next_throne && black_checkers_around_king == 1 && black_checkers_around_king_in_one_move.len() >= 2 {
-        debug!("Applied: 4");
-        value += -10;
-    }
-    // if king_next_throne && black_checkers_around_king == 0 && black_checkers_around_king_in_one_move.len() >= 3 {
-    //     debug!("Applied: 5");
-    //     value += -5;
-    // }
-    if king_in_throne && black_checkers_around_king == 2 && black_checkers_around_king_in_one_move.len() == 0 {
-        debug!("Applied: 6");
-        value += -10;
-    }
-    if king_in_throne && black_checkers_around_king == 2 && black_checkers_around_king_in_one_move.len() >= 1 {
-        debug!("Applied: 7");
-        value += -15;
-    }
-    if king_in_throne && black_checkers_around_king == 3 && black_checkers_around_king_in_one_move.len() == 0 {
-        debug!("Applied: 8");
-        value += -15;
-    }
-
-    // White checkers in respect to king
-    if previous_white_checkers_aroung_king >= 3 && white_checkers_around_king < previous_white_checkers_aroung_king {
-        debug!("Applied: 9");
-        value += 6;
-    }
+    // Position weights
     value += position_weights[king.y as usize][king.x as usize];
 
-    // debug!("Score: {}", value);
     value
 }
 
-pub fn alpha_beta_search(state: &State, depth: u32) -> Option<Move> {
+#[allow(dead_code)]
+pub fn random_heuristic(_state: &State) -> i32 {
+    rand::random::<i32>()
+}
+
+#[allow(dead_code)]
+pub fn alpha_beta_search(state: &State, depth: u32) -> (Option<Move>, i32) {
 
     fn max_value(state: &State, alpha: i32, beta: i32, depth: u32) -> i32 {
         let mut a = alpha;
@@ -301,9 +318,8 @@ pub fn alpha_beta_search(state: &State, depth: u32) -> Option<Move> {
         }
         let mut value = std::i32::MIN;
         for action in actions(state) {
-            debug!("{}Evaluating {}", "-> ".repeat(depth as usize), action);
             value = max(value, min_value(&result(state, &action), a, b, depth - 1));
-            if value >= b {
+            if value > b {
                 return value;
             }
             a = max(a, value);
@@ -319,9 +335,8 @@ pub fn alpha_beta_search(state: &State, depth: u32) -> Option<Move> {
         }
         let mut value = std::i32::MAX;
         for action in actions(state) {
-            debug!("{}Evaluating {}", "-> ".repeat(depth as usize), action);
             value = min(value, max_value(&result(state, &action), a, b, depth - 1));
-            if value <= alpha {
+            if value < alpha {
                 return value;
             }
             b = min(b, value);
@@ -333,32 +348,196 @@ pub fn alpha_beta_search(state: &State, depth: u32) -> Option<Move> {
     let mut alpha = std::i32::MIN;
     let mut beta = std::i32::MAX;
     for action in actions(state) {
-        debug!("{}Evaluating {}", "-> ".repeat(depth as usize), action);
         if state.color == WHITE {
             let value = min_value(&result(state, &action), alpha, beta, depth);
-            debug!("WHITE Move {} value is {}", action, value);
             if value > alpha || best_action.is_none() {
-                debug!("Found new best move: {} with value {}", action, value);
-                debug!("Alpha: {}, Beta: {}", alpha, beta);
                 alpha = value;
                 best_action = Some(action);
             }
         } else {
             let value = max_value(&result(state, &action), alpha, beta, depth);
-            debug!("BLACK Move {} value is {}", action, value);
             if value < beta || best_action.is_none() {
-                debug!("Found new best move: {} with value {}", action, value);
-                debug!("Alpha: {}, Beta: {}", alpha, beta);
                 beta = value;
                 best_action = Some(action);
             }
         }
     }
-    return best_action;
+    return if state.color == WHITE { ( best_action, alpha) } else { ( best_action, beta ) };
+}
+
+pub fn time_bound_alpha_beta_search(state: &State, depth: u32, end_instant: Instant) -> (Option<Move>, i32, bool) {
+
+    fn max_value(state: &State, mut alpha: i32, beta: i32, depth: u32, end_instant: Instant) -> (i32, bool) {
+        if Instant::now() >= end_instant {
+            return (0, false);
+        }
+        if depth == 0 || terminal_test(state) {
+            return (heuristic(state), true);
+        }
+        let mut best_value = std::i32::MIN;
+        let mut completed = true;
+
+        for action in actions(&state) {
+            let result = min_value(&result(&state, &action), alpha, beta, depth - 1, end_instant);
+            let value = result.0;
+            completed = result.1;
+            best_value = max(best_value, value);
+            alpha = max(alpha, value);
+            if beta <= alpha || !completed {
+                break;
+            }
+        }
+        return (best_value, completed);
+    };
+
+    fn min_value(state: &State, alpha: i32, mut beta: i32, depth: u32, end_instant: Instant) -> (i32, bool) {
+        if Instant::now() >= end_instant {
+            return (0, false);
+        }
+        if depth == 0 || terminal_test(state) {
+            return (heuristic(state), true);
+        }
+        let mut best_value = std::i32::MAX;
+        let mut completed = true;
+
+        for action in actions(&state) {
+            let result = max_value(&result(&state, &action), alpha, beta, depth - 1, end_instant);
+            let value = result.0;
+            completed = result.1;
+            best_value = min(best_value, value);
+            beta = min(beta, value);
+            if beta <= alpha || !completed {
+                break;
+            }
+        }
+        return (best_value, completed);
+    };
+
+    let mut best_action = None;
+    let mut alpha = std::i32::MIN;
+    let mut beta = std::i32::MAX;
+    let mut completed = true;
+    for action in actions(state) {
+        if state.color == WHITE {
+            let result = min_value(&result(state, &action), alpha, beta, depth, end_instant);
+            let value = result.0;
+            completed = result.1;
+            if value > alpha || best_action.is_none() {
+                alpha = value;
+                best_action = Some(action);
+            }
+        } else {
+            let result = max_value(&result(state, &action), alpha, beta, depth, end_instant);
+            let value = result.0;
+            completed = result.1;
+            if value < beta || best_action.is_none() {
+                beta = value;
+                best_action = Some(action);
+            }
+        }
+        if Instant::now() >= end_instant {
+            completed = false;
+            break;
+        }
+    }
+    return if state.color == WHITE { ( best_action, alpha, completed ) } else { ( best_action, beta, completed ) };
+}
+
+pub fn iterative_time_bound_alpha_beta_search(state: &State, depth: u32, end_instant: Instant) -> Option<Move> {
+    let mut best_action: Option<Move> = None;
+    let mut best_value: i32 = if state.color == WHITE {
+        std::i32::MIN
+    } else {
+        std::i32::MAX
+    };
+    let mut current_depth: u32 = 0;
+
+    let start_instant = Instant::now();
+    while current_depth <= depth && Instant::now() < end_instant {
+        let result = time_bound_alpha_beta_search(state, current_depth, end_instant);
+        let completed = result.2;
+        if !completed {
+            info!("Depth {} not completed, discarding it", current_depth);
+            break;
+        }
+        if best_action.is_none() {
+            best_action = result.0;
+            best_value = result.1;
+        }
+        else if state.color == WHITE && result.1 > best_value {
+            best_action = result.0;
+            best_value = result.1;
+            if result.1 == std::i32::MAX {
+                break;
+            }
+        }
+        else if state.color == BLACK && result.1 < best_value {
+            best_action = result.0;
+            best_value = result.1;
+            if result.1 == std::i32::MIN {
+                break;
+            }
+        }
+        if (state.color == WHITE && best_value == std::i32::MAX) || (state.color == BLACK && best_value == std::i32::MIN) {
+            break;
+        }
+        info!("Depth {} in {:?} with chosen move {} with value {}", current_depth, start_instant.elapsed(), result.0.unwrap(), result.1);
+        current_depth += 1;
+    }
+    best_action
 }
 
 #[allow(dead_code)]
-pub fn random(state: &State) -> Move {
+pub fn concurrent_iterative_alpha_beta_search(state: &State, depth: u32, end_instant: Instant, workers: u32) -> Option<Move> {
+    let mut current_depth = 0;
+    let mut best_action: Option<Move> = None;
+    let mut best_value: i32 = if state.color ==  WHITE {
+        std::i32::MIN
+    } else {
+        std::i32::MAX
+    };
+
+    let possible_results: Vec<(State, Move)> = actions(&state).iter().map(|a: &Move| (result(&state, a), a.clone())).collect::<Vec<(State, Move)>>();
+
+    let starting_instant = Instant::now();
+    while current_depth <= depth {
+        info!("Current depth {} in {:?}", current_depth, starting_instant.elapsed());
+        let mut evaluated_actions: Vec<(Move, i32)> = vec![];
+
+        crossbeam::scope(|scope| {
+            for slice in possible_results.chunks(possible_results.len() / workers as usize) {
+                let handle = scope.spawn(move |_| {
+                    let mut thread_evaluated_results: Vec<(Move, i32)> = vec![];
+                    for (s, m) in slice.iter() {
+                        let result = time_bound_alpha_beta_search(s, current_depth, end_instant);
+                        thread_evaluated_results.push((m.clone(), result.1));
+                    }
+                    thread_evaluated_results
+                });
+                evaluated_actions.append(&mut handle.join().unwrap());
+            }
+        }).unwrap();
+
+        for action in evaluated_actions {
+            if best_action.is_none() || (state.color == WHITE && best_value < action.1) ||
+                (state.color == BLACK && best_value > action.1) {
+                best_action = Some(action.0);
+                best_value = action.1;
+            }
+        }
+
+        if Instant::now() >= end_instant {
+            break;
+        }
+
+        current_depth += 1;
+    }
+
+    best_action
+}
+
+#[allow(dead_code)]
+pub fn search_random(state: &State) -> Move {
     let actions = actions(state);
     let mut rng = rand::thread_rng();
     let i: usize = rng.gen_range::<usize, usize, usize>(0, actions.len()-1);
@@ -368,6 +547,8 @@ pub fn random(state: &State) -> Move {
 #[cfg(test)]
 mod test{
     use super::*;
+    use crate::game::Board;
+    use std::time::Duration;
 
     #[test]
     fn test_heuristic() {
@@ -375,10 +556,50 @@ mod test{
         let mut score: i32 = heuristic(&state);
         assert_eq!(score, -10);
 
-        // e4->f4
-        let mut m = Move {
+        state.board = Board::new([
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 2, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 2, 2, 3, 2, 0, 1, 2],
+            [2, 2, 1, 1, 0, 1, 1, 2, 2],
+            [2, 0, 0, 0, 1, 0, 0, 0, 2],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 2, 0, 0, 0]
+        ]);
+        score = heuristic(&state);
+        assert_eq!(score, -20);
+
+        let mut state = State::init(BLACK.to_string());
+        state.board = Board::new([
+            [2, 0, 3, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 2, 1, 0],
+            [2, 0, 0, 0, 1, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 1, 1, 2, 2],
+            [2, 0, 0, 0, 1, 0, 2, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 2, 0, 0, 0]
+        ]);
+        score = heuristic(&state);
+        assert_eq!(score, std::i32::MAX);
+
+        let mut state = State::init(BLACK.to_string());
+        state.board = Board::new([
+            [0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0],
+            [2, 0, 0, 1, 3, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 2, 0, 2, 2],
+            [2, 0, 0, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        let m = Move {
             from: Position {
-                x: 4,
+                x: 8,
                 y: 3
             },
             to: Position {
@@ -387,7 +608,221 @@ mod test{
             }
         };
         state.apply_move(&m);
-        score = heuristic(&state);
-        assert_eq!(score, -4);
+        let score = heuristic(&state);
+        assert_eq!(score, -95);
+
+        let mut state = State::init(WHITE.to_string());
+        state.board = Board::new([
+            [0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 2, 0, 0, 0],
+            [2, 0, 0, 1, 0, 0, 0, 0, 2],
+            [2, 2, 1, 1, 3, 2, 0, 2, 2],
+            [2, 0, 0, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        state.apply_move(&Move {
+            from: Position {
+                x: 4,
+                y: 4
+            },
+            to: Position {
+                x: 4,
+                y: 3
+            }
+        });
+        state.board = Board::new([
+            [0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 2, 0, 0, 0],
+            [2, 0, 0, 1, 3, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 2, 0, 2, 2],
+            [2, 0, 0, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        state.apply_move(&Move {
+            from: Position {
+                x: 3,
+                y: 0
+            },
+            to: Position {
+                x: 3,
+                y: 2
+            }
+        });
+        let score = heuristic(&state);
+        assert_eq!(score, 5000);
+
+        let mut state = State::init(BLACK.to_string());
+        state.board = Board::new([
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 2, 0],
+            [0, 0, 0, 0, 1, 2, 0, 0, 0],
+            [0, 0, 0, 2, 0, 3, 0, 0, 2],
+            [2, 2, 0, 2, 0, 0, 1, 2, 2],
+            [0, 0, 2, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0]
+        ]);
+        let score1 = heuristic(&state);
+        state.board = Board::new([
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 2, 0],
+            [0, 0, 0, 0, 1, 2, 0, 0, 0],
+            [0, 0, 0, 2, 0, 3, 0, 0, 2],
+            [2, 2, 0, 2, 0, 0, 1, 2, 2],
+            [0, 0, 2, 1, 0, 2, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        let score2 = heuristic(&state);
+        assert!(score1 > score2);
+    }
+
+    #[test]
+    fn test_time_bound_alpha_beta_search() {
+        let mut state = State::init(BLACK.to_string());
+        state.board = Board::new([
+            [0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 2, 0, 0, 0],
+            [2, 0, 0, 1, 3, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 2, 0, 2, 2],
+            [2, 0, 0, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        let end_instant = Instant::now().checked_add(Duration::new(60, 0)).unwrap();
+        let chosen_move = time_bound_alpha_beta_search(&state, 2, end_instant);
+        let predicted_move = Move {
+            from: Position {
+                x: 8,
+                y: 3,
+            },
+            to: Position {
+                x: 5,
+                y: 3
+            }
+        };
+        assert!(chosen_move.0.is_some());
+        assert_eq!(chosen_move.0.unwrap(), predicted_move);
+    }
+
+    #[test]
+    fn test_iterative_time_bound_alpha_beta_search() {
+        let mut state = State::init(WHITE.to_string());
+        state.board = Board::new([
+            [2, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 2, 1, 0],
+            [2, 0, 3, 0, 1, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 1, 1, 2, 2],
+            [2, 0, 0, 0, 1, 0, 2, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 2, 0, 0, 0]
+        ]);
+        let end_instant = Instant::now().checked_add(Duration::new(60, 0)).unwrap();
+        let chosen_move = iterative_time_bound_alpha_beta_search(&state, 2, end_instant);
+        let predicted_move = Move {
+            from: Position {
+                x: 2,
+                y: 3,
+            },
+            to: Position {
+                x: 2,
+                y: 0
+            }
+        };
+        assert!(chosen_move.is_some());
+        assert_eq!(chosen_move.unwrap(), predicted_move);
+
+        let mut state = State::init(BLACK.to_string());
+        state.board = Board::new([
+            [0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 2, 0, 0, 0],
+            [2, 0, 0, 1, 3, 0, 0, 0, 2],
+            [2, 2, 1, 1, 0, 2, 0, 2, 2],
+            [2, 0, 0, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        let end_instant = Instant::now().checked_add(Duration::new(60, 0)).unwrap();
+        let chosen_move = iterative_time_bound_alpha_beta_search(&state, 2, end_instant);
+        let predicted_move = Move {
+            from: Position {
+                x: 8,
+                y: 3,
+            },
+            to: Position {
+                x: 5,
+                y: 3
+            }
+        };
+        assert!(chosen_move.is_some());
+        assert_eq!(chosen_move.unwrap(), predicted_move);
+
+        let mut state = State::init(BLACK.to_string());
+        state.board = Board::new([
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 1, 2, 0, 0, 2, 0, 0, 0],
+            [2, 0, 3, 0, 0, 2, 0, 0, 0],
+            [2, 2, 0, 2, 0, 2, 0, 2, 2],
+            [0, 0, 2, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0]
+        ]);
+        let end_instant = Instant::now().checked_add(Duration::new(60, 0)).unwrap();
+        let chosen_move = iterative_time_bound_alpha_beta_search(&state, 2, end_instant);
+        let predicted_move = Move {
+            from: Position {
+                x: 1,
+                y: 4,
+            },
+            to: Position {
+                x: 2,
+                y: 4
+            }
+        };
+        assert!(chosen_move.is_some());
+        assert_eq!(chosen_move.unwrap(), predicted_move);
+
+        let mut state = State::init(BLACK.to_string());
+        state.board = Board::new([
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 2, 0],
+            [0, 0, 0, 0, 1, 2, 0, 0, 0],
+            [0, 0, 0, 2, 0, 3, 0, 0, 2],
+            [2, 2, 0, 2, 0, 0, 1, 2, 2],
+            [0, 0, 2, 1, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 0, 0, 0, 0]
+        ]);
+        let end_instant = Instant::now().checked_add(Duration::new(60, 0)).unwrap();
+        let chosen_move = iterative_time_bound_alpha_beta_search(&state, 2, end_instant);
+        let predicted_move = Move {
+            from: Position {
+                x: 4,
+                y: 5,
+            },
+            to: Position {
+                x: 5,
+                y: 5
+            }
+        };
+        assert!(chosen_move.is_some());
+        assert_eq!(chosen_move.unwrap(), predicted_move);
     }
 }
