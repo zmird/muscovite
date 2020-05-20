@@ -1,12 +1,13 @@
 use crate::network::ServerConnection;
 use crate::game::{State, Status, Move};
 use crate::rules::game_status;
-use crate::search::alpha_beta_search;
+use crate::search::iterative_time_bound_alpha_beta_search;
 use crate::serialization::*;
 use std::io::Error;
-use log::info;
+use log::{info};
+use std::time::{Instant, Duration};
 
- pub struct Player {
+pub struct Player {
      connection: ServerConnection,
      state: State
  }
@@ -22,8 +23,11 @@ use log::info;
      }
 
      fn make_move(&mut self) {
-         let m: Move = alpha_beta_search(&self.state, 1).unwrap();
-         info!("Chosen move: {}", m);
+         let start_instant = Instant::now();
+         let end_instant = start_instant.checked_add(Duration::new(58, 0)).unwrap();
+         let m: Move = iterative_time_bound_alpha_beta_search(&self.state, 6, end_instant).unwrap();
+         // let m: Move = alpha_beta_search(&self.state, 3).0.unwrap();
+         info!("Chosen move: {} in {:?}", m, start_instant.elapsed());
          self.connection.write_string(&serialize_move(&m, &self.state.color));
      }
 
@@ -50,6 +54,7 @@ use log::info;
              }
              self.receive_game_state();
              info!("{}", self.state.board);
+             info!("{:?}", self.state.board);
 
              match self.state.status {
                  Status::WIN => { info!("WON!"); break; },
