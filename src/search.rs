@@ -452,7 +452,7 @@ pub fn iterative_time_bound_alpha_beta_search(state: &State, depth: u32, end_ins
     };
     let mut current_depth: u32 = 0;
 
-    // let start_instant = Instant::now();
+    let start_instant = Instant::now();
     while current_depth <= depth && Instant::now() < end_instant {
         let result = time_bound_alpha_beta_search(state, current_depth, end_instant);
         let completed = result.2;
@@ -481,58 +481,9 @@ pub fn iterative_time_bound_alpha_beta_search(state: &State, depth: u32, end_ins
         if (state.color == WHITE && best_value == std::i32::MAX) || (state.color == BLACK && best_value == std::i32::MIN) {
             break;
         }
-        // info!("Depth {} in {:?} with chosen move {} with value {}", current_depth, start_instant.elapsed(), result.0.unwrap(), result.1);
+        info!("Depth {} in {:?} with chosen move {} with value {}", current_depth, start_instant.elapsed(), result.0.unwrap(), result.1);
         current_depth += 1;
     }
-    best_action
-}
-
-#[allow(dead_code)]
-pub fn concurrent_iterative_alpha_beta_search(state: &State, depth: u32, end_instant: Instant, workers: u32) -> Option<Move> {
-    let mut current_depth = 0;
-    let mut best_action: Option<Move> = None;
-    let mut best_value: i32 = if state.color ==  WHITE {
-        std::i32::MIN
-    } else {
-        std::i32::MAX
-    };
-
-    let possible_results: Vec<(State, Move)> = actions(&state).iter().map(|a: &Move| (result(&state, a), a.clone())).collect::<Vec<(State, Move)>>();
-
-    let starting_instant = Instant::now();
-    while current_depth <= depth {
-        info!("Current depth {} in {:?}", current_depth, starting_instant.elapsed());
-        let mut evaluated_actions: Vec<(Move, i32)> = vec![];
-
-        crossbeam::scope(|scope| {
-            for slice in possible_results.chunks(possible_results.len() / workers as usize) {
-                let handle = scope.spawn(move |_| {
-                    let mut thread_evaluated_results: Vec<(Move, i32)> = vec![];
-                    for (s, m) in slice.iter() {
-                        let result = time_bound_alpha_beta_search(s, current_depth, end_instant);
-                        thread_evaluated_results.push((m.clone(), result.1));
-                    }
-                    thread_evaluated_results
-                });
-                evaluated_actions.append(&mut handle.join().unwrap());
-            }
-        }).unwrap();
-
-        for action in evaluated_actions {
-            if best_action.is_none() || (state.color == WHITE && best_value < action.1) ||
-                (state.color == BLACK && best_value > action.1) {
-                best_action = Some(action.0);
-                best_value = action.1;
-            }
-        }
-
-        if Instant::now() >= end_instant {
-            break;
-        }
-
-        current_depth += 1;
-    }
-
     best_action
 }
 
